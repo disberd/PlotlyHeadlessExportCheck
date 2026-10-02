@@ -10,6 +10,8 @@ jobs:
         include:
           - os: ubuntu-latest
             plat: linux64
+            # Ubuntu 24.04 AppArmor blocks the user-namespace sandbox: Chrome aborts with "No usable sandbox!"
+            extra: --no-sandbox
           - os: macos-latest
             plat: mac-arm64
           - os: windows-latest
@@ -19,6 +21,7 @@ jobs:
     env:
       CFT: "154.0.8037.92"
       IDLE: "10"
+      EXTRA_FLAGS: ${{ matrix.extra }}
     defaults:
       run:
         shell: bash
@@ -60,7 +63,7 @@ jobs:
       - name: Memory over 120 exports
         if: always()
         timeout-minutes: 15
-        run: julia --project=. --startup-file=no proto.jl grow pressure_each teardown 2>&1 | tee out/grow.log
+        run: julia --project=. --startup-file=no proto.jl grow pressure_each pressure20 teardown 2>&1 | tee out/grow.log
       - name: Kill test
         if: always()
         timeout-minutes: 15

@@ -59,7 +59,7 @@ function start_browser(flags = FLAGS)
     profile = mktempdir()
     to, child_in = child_pipe(true)
     from, child_out = child_pipe(false)
-    cmd = Cmd([CHROME; flags; "--user-data-dir=$profile"; "--remote-debugging-pipe"; "about:blank"])
+    cmd = Cmd([CHROME; flags; String.(split(get(ENV, "EXTRA_FLAGS", ""))); "--user-data-dir=$profile"; "--remote-debugging-pipe"; "about:blank"])
     red = Base.CmdRedirect(Base.CmdRedirect(cmd, child_in, 3), child_out, 4)
     errlog = joinpath(OUT, "chrome-stderr-$(getpid())-$(NSTART[] += 1).log")
     proc = run(pipeline(red; stdin = devnull, stdout = devnull, stderr = errlog); wait = false)
@@ -569,7 +569,7 @@ end
 function pss_line(b)
     st = tree_stats(b)
     by(t) = round(Int, sum((s.pss for s in st if s.typ == t); init = 0) / 1024)
-    return "PSS total=$(round(Int, sum(s.pss for s in st) / 1024)) renderer=$(by("renderer")) gpu=$(by("gpu-process")) browser=$(by("browser")) MB"
+    return "$PSS_NAME total=$(round(Int, sum(s.pss for s in st) / 1024)) renderer=$(by("renderer")) gpu=$(by("gpu-process")) browser=$(by("browser")) MB"
 end
 
 const STRATEGIES = Dict(
@@ -580,6 +580,8 @@ const STRATEGIES = Dict(
     "pressure_each" => (variant = "H_inject", runtime = true, gc = true, pressure = true, recycle = 0),
     "navigate" => (variant = "H_file", runtime = true, gc = false, pressure = false, recycle = 0),
     "recycle40" => (variant = "H_inject", runtime = true, gc = false, pressure = false, recycle = 40),
+    # GC plus pressure signal every 20 exports only
+    "pressure20" => (variant = "H_inject", runtime = true, gc = false, pressure = false, recycle = 0, release = 20),
 )
 
 function release!(b, s)
@@ -615,6 +617,10 @@ function grow(name; n = parse(Int, get(ENV, "N", "120")), every = 20)
         end
         i % every == 0 && println(lpad(i, 4), " exports: ", pss_line(b), "  ", page_metrics(b, S.s),
             "  median $(ms(med(times[i-every+1:i]))) ms")
+        if get(cfg, :release, 0) > 0 && i % cfg.release == 0
+            push!(rel, release!(b, S.s))
+            println("      released: ", pss_line(b))
+        end
     end
     sleep(5)
     println("idle 5 s:     ", pss_line(b), "  ", page_metrics(b, S.s))
