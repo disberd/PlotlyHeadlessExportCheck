@@ -1,0 +1,7 @@
+[deps]
+JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
+PlotlyBase = "a03496cd-edff-5a9b-9e67-9cda94a718b5"
+PlotlyBaseExtras = "ba01aadf-c838-43fc-827a-f1961e451c7b"
+
+[sources]
+PlotlyBaseExtras = {rev = "b9118ec5c61b375cd308b09c907ca528208ef143", url = "https://github.com/disberd/PlotlyBaseExtras.jl"}

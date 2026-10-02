@@ -1,0 +1,72 @@
+name: check
+on:
+  push:
+  workflow_dispatch:
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            plat: linux64
+          - os: macos-latest
+            plat: mac-arm64
+          - os: windows-latest
+            plat: win64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    env:
+      CFT: "154.0.8037.92"
+      IDLE: "10"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: "1.13"
+      - uses: julia-actions/cache@v2
+      - name: Download chrome-headless-shell
+        run: |
+          curl -fsSL -o chs.zip "https://storage.googleapis.com/chrome-for-testing-public/$CFT/${{ matrix.plat }}/chrome-headless-shell-${{ matrix.plat }}.zip"
+          ls -l chs.zip
+          if [ "$RUNNER_OS" = Windows ]; then 7z x -y -obrowser chs.zip > /dev/null; else unzip -q chs.zip -d browser; fi
+          du -sh browser
+          ls browser/chrome-headless-shell-${{ matrix.plat }}
+          exe="$PWD/browser/chrome-headless-shell-${{ matrix.plat }}/chrome-headless-shell"
+          if [ "$RUNNER_OS" = Windows ]; then exe=$(cygpath -w "$exe.exe"); fi
+          echo "CHROME_PATH=$exe" >> "$GITHUB_ENV"
+          mkdir -p out
+      - name: Machine
+        run: |
+          julia --version
+          nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo "$NUMBER_OF_PROCESSORS"
+      - name: Instantiate
+        run: julia --project=. -e 'using Pkg; Pkg.instantiate(); Pkg.precompile()'
+      - name: Probe WebGL and MathJax per flag set
+        if: always()
+        timeout-minutes: 10
+        run: julia --project=. --startup-file=no proto.jl probe 2>&1 | tee out/probe.log
+      - name: Bench (kept page and new page per figure)
+        if: always()
+        timeout-minutes: 15
+        run: julia --project=. --startup-file=no proto.jl bench H_inject A_file 2>&1 | tee out/bench.log
+      - name: Fresh Julia to first PNG
+        if: always()
+        timeout-minutes: 10
+        run: julia --project=. --startup-file=no proto.jl ttfx 2>&1 | tee out/ttfx.log
+      - name: Memory over 120 exports
+        if: always()
+        timeout-minutes: 15
+        run: julia --project=. --startup-file=no proto.jl grow pressure_each teardown 2>&1 | tee out/grow.log
+      - name: Kill test
+        if: always()
+        timeout-minutes: 15
+        run: julia --project=. --startup-file=no kill_test.jl 2>&1 | tee out/kill.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: out-${{ matrix.plat }}
+          path: out/
